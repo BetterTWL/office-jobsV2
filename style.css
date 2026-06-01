@@ -1964,3 +1964,179 @@ body {
         grid-template-columns: 1fr;
     }
 }
+
+/* ==========================================
+   MOBILE LAYOUT OVERRIDES (body.layout-mobile)
+   ========================================== */
+
+/* Layout & Container */
+body.layout-mobile .office-container {
+    flex-direction: column;
+}
+
+/* Sidebar Drawer Style */
+body.layout-mobile .office-sidebar {
+    position: fixed;
+    top: 0;
+    left: -280px;
+    width: 280px;
+    height: 100vh;
+    z-index: 1005;
+    transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 4px 0 20px rgba(15, 23, 42, 0.15);
+    background-color: var(--bg-office-sidebar);
+}
+
+body.layout-mobile.sidebar-open .office-sidebar {
+    left: 0;
+}
+
+/* Sidebar Backdrop */
+body.layout-mobile.sidebar-open .sidebar-backdrop {
+    display: block;
+}
+
+.sidebar-backdrop {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(15, 23, 42, 0.5);
+    z-index: 1000;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    transition: opacity 0.3s ease;
+}
+
+/* Main Content Area */
+body.layout-mobile .office-main {
+    padding: 16px 12px;
+    width: 100%;
+    overflow-x: hidden;
+}
+
+/* Main Header */
+body.layout-mobile .main-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border-office);
+    margin-bottom: 16px;
+}
+
+body.layout-mobile .header-actions {
+    width: 100%;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+body.layout-mobile .system-time {
+    display: none; /* Hide system clock on narrow screens */
+}
+
+/* Hamburger Toggle Button Display */
+body.layout-mobile #menu-toggle-btn {
+    display: flex !important;
+}
+
+/* Scrollable Tab Strip */
+body.layout-mobile .view-tabs-strip {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none; /* Firefox */
+    -webkit-overflow-scrolling: touch;
+    gap: 6px;
+    padding: 4px 2px 10px 2px;
+    border-bottom: 1px solid var(--border-light);
+    margin-bottom: 16px;
+}
+
+body.layout-mobile .view-tabs-strip::-webkit-scrollbar {
+    display: none; /* Safari/Chrome */
+}
+
+body.layout-mobile .view-tabs-strip .tab-btn {
+    flex-shrink: 0;
+    padding: 8px 12px;
+    font-size: 12px;
+}
+
+/* Competency Matrix Detail Columns */
+body.layout-mobile .matrix-table th, 
+body.layout-mobile .matrix-table td {
+    padding: 8px;
+}
+
+body.layout-mobile .matrix-level-grid {
+    grid-template-columns: 1fr; /* Stack L0-L3 standard boxes */
+    gap: 8px;
+}
+
+/* Salary telemetries */
+body.layout-mobile .salary-bar-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+}
+
+body.layout-mobile .salary-bar-row .grade-lbl {
+    width: auto;
+    font-weight: 700;
+}
+
+body.layout-mobile .salary-bar-wrapper {
+    width: 100%;
+    margin-left: 0;
+}
+
+body.layout-mobile .chart-axis {
+    display: none; /* Hide chart ruler on mobile */
+}
+
+/* Calculator Grid layout stack */
+body.layout-mobile .calculator-layout {
+    grid-template-columns: 1fr;
+    gap: 20px;
+}
+
+body.layout-mobile .score-telemetry-block {
+    flex-direction: row;
+    justify-content: space-around;
+}
+
+body.layout-mobile .dial-container {
+    width: 45%;
+}
+
+/* Amoeba Sim grid */
+body.layout-mobile .sim-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+}
+
+/* Comparisons */
+body.layout-mobile .agile-kanban-board {
+    grid-template-columns: 1fr;
+    gap: 16px;
+}
+
+/* Interview Prep Q&A */
+body.layout-mobile .interview-list-grid {
+    grid-template-columns: 1fr;
+}
+
+body.layout-mobile .interview-toolbar {
+    justify-content: flex-start;
+    gap: 8px;
+}
+
+/* Modal sizing */
+body.layout-mobile .modal-card {
+    width: 95%;
+    max-height: 90vh;
+}
