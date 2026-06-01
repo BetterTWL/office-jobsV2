@@ -11,6 +11,9 @@ document.addEventListener("DOMContentLoaded", () => {
     // 3. Tab Switching
     initTabs();
 
+    // 4. Layout Mode (PC/Mobile)
+    initLayoutMode();
+
     // Init Lucide
     initIcons();
 });
@@ -163,6 +166,9 @@ function initRoles() {
 
 function selectRole(roleName) {
     activeRole = roleName;
+    
+    // Close sidebar drawer if in mobile view
+    document.body.classList.remove("sidebar-open");
     
     document.getElementById("welcome-screen").classList.add("hidden");
     document.getElementById("workspace-inner").classList.remove("hidden");
@@ -1341,5 +1347,93 @@ function renderInterviewTab() {
     if (container.children.length === 0) {
         container.innerHTML = `<div class="empty-state" style="grid-column: span 2; text-align:center; padding:20px; color:var(--text-muted);"><i data-lucide="smile" style="display:block; margin:0 auto 10px; width:24px; height:24px;"></i>本職缺之所有能力指標均以實作評核為主，暫無口試問題。</div>`;
         initIcons();
+    }
+}
+
+// Global layout state
+let currentLayout = "auto"; // "auto", "pc", "mobile"
+
+function initLayoutMode() {
+    // Load preference
+    const savedLayout = localStorage.getItem("layout-mode") || "auto";
+    currentLayout = savedLayout;
+
+    // Apply layout based on preference & innerWidth
+    applyLayoutMode();
+
+    // Bind layout switcher button
+    const layoutToggleBtn = document.getElementById("layout-toggle-btn");
+    if (layoutToggleBtn) {
+        layoutToggleBtn.addEventListener("click", () => {
+            if (currentLayout === "auto") {
+                currentLayout = "mobile";
+            } else if (currentLayout === "mobile") {
+                currentLayout = "pc";
+            } else {
+                currentLayout = "auto";
+            }
+            localStorage.setItem("layout-mode", currentLayout);
+            applyLayoutMode();
+        });
+    }
+
+    // Bind window resize event
+    window.addEventListener("resize", () => {
+        if (currentLayout === "auto") {
+            applyLayoutMode();
+        }
+    });
+
+    // Bind mobile menu buttons
+    const menuToggleBtn = document.getElementById("menu-toggle-btn");
+    const sidebarBackdrop = document.getElementById("sidebar-backdrop");
+
+    if (menuToggleBtn) {
+        menuToggleBtn.addEventListener("click", () => {
+            document.body.classList.toggle("sidebar-open");
+        });
+    }
+
+    if (sidebarBackdrop) {
+        sidebarBackdrop.addEventListener("click", () => {
+            document.body.classList.remove("sidebar-open");
+        });
+    }
+}
+
+function applyLayoutMode() {
+    const isMobileViewport = window.innerWidth <= 992;
+    const body = document.body;
+    const toggleIcon = document.getElementById("layout-toggle-icon");
+    const toggleText = document.getElementById("layout-toggle-text");
+
+    // Clear previous classes
+    body.classList.remove("layout-mobile", "layout-pc");
+
+    let activeMode = "pc";
+    if (currentLayout === "mobile" || (currentLayout === "auto" && isMobileViewport)) {
+        activeMode = "mobile";
+    }
+
+    if (activeMode === "mobile") {
+        body.classList.add("layout-mobile");
+    } else {
+        body.classList.add("layout-pc");
+        body.classList.remove("sidebar-open"); // close drawer on desktop
+    }
+
+    // Update switcher button label & icon
+    if (toggleText && toggleIcon) {
+        if (currentLayout === "pc") {
+            toggleText.textContent = "強制電腦版";
+            toggleIcon.setAttribute("data-lucide", "monitor");
+        } else if (currentLayout === "mobile") {
+            toggleText.textContent = "強制手機版";
+            toggleIcon.setAttribute("data-lucide", "smartphone");
+        } else {
+            toggleText.textContent = isMobileViewport ? "自動手機版" : "自動電腦版";
+            toggleIcon.setAttribute("data-lucide", isMobileViewport ? "smartphone" : "monitor");
+        }
+        initIcons(); // Re-render Lucide icons for the button
     }
 }
