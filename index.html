@@ -65,15 +65,26 @@
         <main class="office-main">
             <!-- Top Dashboard Bar -->
             <header class="main-header">
-                <div class="header-title-section">
-                    <div class="breadcrumb">騏宏科技 / 職缺職能與薪資結構評估</div>
-                    <div style="display: flex; align-items: center; gap: 12px; margin-top: 4px;">
-                        <!-- TWL Header Logo -->
-                        <img src="logo.png" alt="TWL Logo" class="twl-logo-header">
-                        <h2 id="current-role-title">載入中...</h2>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <!-- Menu Toggle Hamburger Button (Mobile Layout only) -->
+                    <button class="calc-action-btn" id="menu-toggle-btn" title="打開目錄" style="display: none; padding: 8px; border-radius: 6px; cursor: pointer; align-items: center; justify-content: center; width: 36px; height: 36px;">
+                        <i data-lucide="menu" style="width: 20px; height: 20px;"></i>
+                    </button>
+                    <div class="header-title-section">
+                        <div class="breadcrumb">騏宏科技 / 職缺職能與薪資結構評估</div>
+                        <div style="display: flex; align-items: center; gap: 12px; margin-top: 4px;">
+                            <!-- TWL Header Logo -->
+                            <img src="logo.png" alt="TWL Logo" class="twl-logo-header">
+                            <h2 id="current-role-title">載入中...</h2>
+                        </div>
                     </div>
                 </div>
-                <div class="header-actions">
+                <div class="header-actions" style="display: flex; align-items: center; gap: 12px;">
+                    <!-- Layout Selector (PC/Mobile Toggle) -->
+                    <button class="calc-action-btn" id="layout-toggle-btn" title="切換版面配置" style="display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--text-light); cursor: pointer; height: 34px;">
+                        <i data-lucide="smartphone" id="layout-toggle-icon" style="width: 14px; height: 14px;"></i>
+                        <span id="layout-toggle-text">手機版</span>
+                    </button>
                     <div class="system-time">
                         <i data-lucide="clock"></i>
                         <span id="current-time">2026-06-01 15:00</span>
@@ -603,6 +614,9 @@
             </div>
         </div>
     </div>
+
+    <!-- SIDEBAR BACKDROP FOR MOBILE -->
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
 
     <!-- SCRIPTS -->
     <script src="data.js"></script>
