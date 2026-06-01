@@ -1,1266 +1,823 @@
-// CORE SYSTEM SCRIPT WITH DYNAMIC CHARTS & VECTOR ICONS
-// DYNAMIC RADAR MAPPING ENGINE & BINDER SECTIONS
-
 document.addEventListener("DOMContentLoaded", () => {
-    // 1. Clock Widget
-    initClock();
-    
-    // 2. Load Roles
-    initRoles();
+    // 1. Initial setups
+    const timeSpan = document.getElementById("current-time");
+    if (timeSpan) {
+        const updateTime = () => {
+            const now = new Date();
+            const yyyy = now.getFullYear();
+            const mm = String(now.getMonth() + 1).padStart(2, '0');
+            const dd = String(now.getDate()).padStart(2, '0');
+            const hh = String(now.getHours()).padStart(2, '0');
+            const min = String(now.getMinutes()).padStart(2, '0');
+            timeSpan.textContent = `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+        };
+        updateTime();
+        setInterval(updateTime, 60000);
+    }
 
-    // 3. Tab Switching
-    initTabs();
-
-    // Init Lucide
+    // Initialize lucide icons helper
+    const initIcons = () => {
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+    };
     initIcons();
-});
 
-// GLOBAL STATE
-let activeRole = "";
-let currentScores = {}; // Map of compCode -> score
-let currentVetos = {};   // Map of vetoIndex -> boolean
-let radarChart = null;   // Chart.js instance
-
-function initClock() {
-    const clockEl = document.getElementById("current-time");
+    // Theme Toggle Logic
+    const themeToggleBtn = document.getElementById("theme-toggle-btn");
+    const themeIcon = document.getElementById("theme-icon");
     
-    function updateClock() {
-        const now = new Date();
-        const yyyy = now.getFullYear();
-        const mm = String(now.getMonth() + 1).padStart(2, '0');
-        const dd = String(now.getDate()).padStart(2, '0');
-        const hh = String(now.getHours()).padStart(2, '0');
-        const min = String(now.getMinutes()).padStart(2, '0');
-        clockEl.textContent = `${yyyy}-${mm}-${dd} ${hh}:${min}`;
-    }
-    
-    updateClock();
-    setInterval(updateClock, 60000);
-}
-
-function initIcons() {
-    if (typeof lucide !== 'undefined') {
-        lucide.createIcons();
-    }
-}
-
-// Group 14 roles into categories
-const classifyJob = (jobName) => {
-    const name = jobName.toLowerCase();
-    if (name.includes("mis") || name.includes("資訊") || name.includes("韌體") || name.includes("機構") || name.includes("生技") || name.includes("維修") || name.includes("品管")) {
-        return "tech";
-    } else if (name.includes("smt") || name.includes("製造") || name.includes("生產") || name.includes("生管")) {
-        return "manufacturing";
-    } else if (name.includes("人資") || name.includes("總務") || name.includes("廠務") || name.includes("財會") || name.includes("會計") || name.includes("財務") || name.includes("倉管")) {
-        return "admin";
-    } else if (name.includes("採購") || name.includes("業務")) {
-        return "sales";
-    }
-    return "admin"; // default
-};
-
-const getCategoryZh = (cat) => {
-    if (cat === "tech") return "研發技術";
-    if (cat === "manufacturing") return "生產製造";
-    if (cat === "admin") return "行政管理";
-    if (cat === "sales") return "商務開發";
-    return "行政管理";
-};
-
-function initRoles() {
-    const container = document.getElementById("role-list-container");
-    container.innerHTML = "";
-    
-    const roles = Object.keys(SALARY_DATA);
-    
-    // Function to render roles based on filter & search query
-    const renderSidebarList = (searchQuery = "", categoryFilter = "all") => {
-        container.innerHTML = "";
+    const applyTheme = (theme) => {
+        document.documentElement.setAttribute("data-theme", theme);
+        localStorage.setItem("theme", theme);
         
-        const filtered = roles.filter(roleName => {
-            const matchesSearch = roleName.toLowerCase().includes(searchQuery.toLowerCase());
-            const matchesCategory = categoryFilter === "all" || classifyJob(roleName) === categoryFilter;
+        // Update Lucide Icon dynamically
+        if (themeIcon) {
+            themeIcon.setAttribute("data-lucide", theme === "dark" ? "sun" : "moon");
+            initIcons();
+        }
+        
+        // Update Radar Chart colors if initialized
+        if (radarChart) {
+            const isDark = theme === "dark";
+            radarChart.options.scales.r.pointLabels.color = isDark ? "#cbd5e1" : "#334155";
+            radarChart.options.scales.r.grid.color = isDark ? "#334155" : "#cbd5e1";
+            radarChart.options.scales.r.angleLines.color = isDark ? "#334155" : "#cbd5e1";
+            radarChart.options.scales.r.ticks.color = isDark ? "#94a3b8" : "#64748b";
+            radarChart.update();
+        }
+    };
+    
+    // Check initial preference
+    const initialTheme = localStorage.getItem("theme") || 
+        (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    applyTheme(initialTheme);
+    
+    if (themeToggleBtn) {
+        themeToggleBtn.addEventListener("click", () => {
+            const currentTheme = document.documentElement.getAttribute("data-theme") || "light";
+            const newTheme = currentTheme === "dark" ? "light" : "dark";
+            applyTheme(newTheme);
+        });
+    }
+
+    // 2. Load and categorize roles
+    const jobs = window.JOBS_DATA || [];
+    console.log("Loaded jobs:", jobs.length);
+
+    // Categories mapping helper
+    const classifyJob = (jobName) => {
+        const name = jobName.toLowerCase();
+        if (name.includes("mis") || name.includes("資訊") || name.includes("韌體") || name.includes("機構") || name.includes("生技") || name.includes("維修")) {
+            return "tech";
+        } else if (name.includes("smt") || name.includes("製造") || name.includes("生產") || name.includes("生管")) {
+            return "manufacturing";
+        } else if (name.includes("人資") || name.includes("總務") || name.includes("廠務") || name.includes("財會") || name.includes("會計") || name.includes("財務") || name.includes("倉管")) {
+            return "admin";
+        } else if (name.includes("採購") || name.includes("業務")) {
+            return "sales";
+        }
+        return "admin"; // default
+    };
+
+    let activeJob = jobs[0] || null;
+    let evalScores = {}; // Stores self-evaluation scores for active job: { itemId: score }
+    let radarChart = null;
+
+    // Elements
+    const roleListContainer = document.getElementById("role-list-container");
+    const roleSearchInput = document.getElementById("role-search");
+    const filterButtons = document.querySelectorAll(".filter-btn");
+    const tabButtons = document.querySelectorAll(".tab-btn");
+    const tabContents = document.querySelectorAll(".tab-content");
+    const currentRoleTitle = document.getElementById("current-role-title");
+    
+    // Default mock salary structure for roles without salary data (like 生技維修)
+    const generateDefaultSalary = (jobName) => {
+        return [
+            { grade: "L3A", title_zh: "助理技術員", title_en: "Junior Technician", salary_min: "30000", salary_mid: "33000", salary_max: "36000", requirements: "認真負責、配合度高，並能配合資深師傅完成指派工作項目", promotion: "通過OJT考評", amoeba: "學習者" },
+            { grade: "L3B", title_zh: "技術員", title_en: "Technician", salary_min: "33000", salary_mid: "36000", salary_max: "40000", requirements: "熟練單一工站操作、防呆識別、報工程序與5S規範執行", promotion: "獨立作業，無不良異常記錄", amoeba: "執行者" },
+            { grade: "L4A", title_zh: "工程師", title_en: "Engineer", salary_min: "38000", salary_mid: "43000", salary_max: "49000", requirements: "熟練多工站操作或設備調機、製程異常處置、巡檢表填寫、具基礎8D知識", promotion: "多工站輪訓達標，設備異常修復率符合標準", amoeba: "獨立執行者" },
+            { grade: "L4B", title_zh: "資深工程師", title_en: "Senior Engineer", salary_min: "44000", salary_mid: "50000", salary_max: "57000", requirements: "主導設備保養與維修計畫、異常原因分析與改善提案、品質異常追查、備料及安全管理", promotion: "提案改善通過並具效益，年度考評優良", amoeba: "獨立執行者" },
+            { grade: "L5A", title_zh: "技術主管", title_en: "Technical Lead", salary_min: "52000", salary_mid: "59000", salary_max: "68000", requirements: "建立保養/維護SOP、規劃年度備件預算、帶領新人培訓、主導品質稽核應對與改善", promotion: "具備帶訓師資格，獨立主導改善案件", amoeba: "巴長儲備人選" }
+        ];
+    };
+
+    // 3. Render sidebar roles
+    const renderSidebar = (searchQuery = "", filterCategory = "all") => {
+        roleListContainer.innerHTML = "";
+        
+        const filtered = jobs.filter(job => {
+            const matchesSearch = job.job_name.toLowerCase().includes(searchQuery.toLowerCase());
+            const matchesCategory = filterCategory === "all" || classifyJob(job.job_name) === filterCategory;
             return matchesSearch && matchesCategory;
         });
 
         if (filtered.length === 0) {
-            container.innerHTML = `<div style="text-align:center; padding:20px; color:var(--text-muted); font-size:12px;">無相符的職缺項目</div>`;
+            roleListContainer.innerHTML = `<div class="empty-state" style="height:120px;color:rgba(255,255,255,0.4);"><p>查無符合的職缺</p></div>`;
             return;
         }
 
-        filtered.forEach(roleName => {
-            const item = SALARY_DATA[roleName];
-            const btn = document.createElement("button");
-            btn.className = `role-item ${activeRole === roleName ? 'active' : ''}`;
-            btn.setAttribute("data-role", roleName);
+        filtered.forEach(job => {
+            const item = document.createElement("button");
+            item.className = `role-item ${activeJob && activeJob.filename === job.filename ? 'active' : ''}`;
             
-            const cat = classifyJob(roleName);
-            const catZh = getCategoryZh(cat);
-            
-            // Calculate total competency counts
-            let compCount = 0;
-            if (item.categories) {
-                item.categories.forEach(c => compCount += c.items.length);
-            }
+            // Generate category badge
+            const cat = classifyJob(job.job_name);
+            let catZh = "技術";
+            if (cat === "tech") catZh = "研發技術";
+            else if (cat === "manufacturing") catZh = "生產製造";
+            else if (cat === "admin") catZh = "行政管理";
+            else if (cat === "sales") catZh = "商務開發";
 
-            btn.innerHTML = `
+            item.innerHTML = `
                 <div class="role-info">
-                    <h3>${roleName}</h3>
-                    <span>${compCount} 項能力指標</span>
+                    <h3>${job.job_name}</h3>
+                    <span>${job.competencies.length} 項能力指標</span>
                 </div>
                 <span class="role-badge">${catZh}</span>
             `;
-            
-            btn.addEventListener("click", () => {
+
+            item.addEventListener("click", () => {
+                activeJob = job;
                 document.querySelectorAll(".role-item").forEach(el => el.classList.remove("active"));
-                btn.classList.add("active");
-                selectRole(roleName);
+                item.classList.add("active");
+                loadActiveJobData();
             });
-            
-            container.appendChild(btn);
+
+            roleListContainer.appendChild(item);
         });
     };
 
-    // Bind Search Input
-    const searchInput = document.getElementById("role-search");
-    searchInput.addEventListener("input", (e) => {
-        const activeFilter = document.querySelector(".filter-btn.active").getAttribute("data-filter");
-        renderSidebarList(e.target.value, activeFilter);
+    // Search and filter listeners
+    roleSearchInput.addEventListener("input", (e) => {
+        const activeFilter = document.querySelector(".filter-btn.active").dataset.filter;
+        renderSidebar(e.target.value, activeFilter);
     });
 
-    // Bind Filter Category Buttons
-    const filterBtns = document.querySelectorAll(".filter-group .filter-btn");
-    filterBtns.forEach(btn => {
+    filterButtons.forEach(btn => {
         btn.addEventListener("click", () => {
-            filterBtns.forEach(b => b.classList.remove("active"));
+            filterButtons.forEach(el => el.classList.remove("active"));
             btn.classList.add("active");
-            
-            const catFilter = btn.getAttribute("data-filter");
-            renderSidebarList(searchInput.value, catFilter);
+            renderSidebar(roleSearchInput.value, btn.dataset.filter);
         });
     });
 
-    // Initial render
-    renderSidebarList("", "all");
-
-    // Print button top-bar
-    document.getElementById("print-btn-header").onclick = () => {
-        if (activeRole) {
-            showReportModal();
-        }
-    };
-
-    // Auto load first role
-    if (roles.length > 0) {
-        selectRole(roles[0]);
-        // Update first button as active
-        setTimeout(() => {
-            const firstBtn = container.querySelector(".role-item");
-            if (firstBtn) firstBtn.classList.add("active");
-        }, 100);
-    }
-}
-
-function selectRole(roleName) {
-    activeRole = roleName;
-    
-    document.getElementById("welcome-screen").classList.add("hidden");
-    document.getElementById("workspace-inner").classList.remove("hidden");
-    
-    const roleData = SALARY_DATA[roleName];
-    document.getElementById("current-role-title").textContent = roleName;
-    document.getElementById("active-role-name").textContent = roleName;
-    document.getElementById("active-role-file").textContent = roleData.filename;
-    
-    // Bounds & ranges
-    let minSalary = Infinity;
-    let maxSalary = -Infinity;
-    if (roleData.grades && roleData.grades.length > 0) {
-        roleData.grades.forEach(g => {
-            if (g.min_salary < minSalary) minSalary = g.min_salary;
-            if (g.max_salary > maxSalary) maxSalary = g.max_salary;
-        });
-    }
-    
-    const rangeEl = document.getElementById("active-role-salary-range");
-    if (minSalary !== Infinity && maxSalary !== -Infinity) {
-        rangeEl.textContent = `NT$ ${minSalary.toLocaleString()} ~ ${maxSalary.toLocaleString()}`;
-    } else {
-        rangeEl.textContent = "根據職能要求面議";
-    }
-
-    // Reset score sets
-    currentScores = {};
-    currentVetos = {};
-    
-    roleData.categories.forEach(cat => {
-        cat.items.forEach(item => {
-            currentScores[item.code] = 0;
-        });
-    });
-
-    // Destroy chart if loaded
-    if (radarChart) {
-        radarChart.destroy();
-        radarChart = null;
-    }
-
-    // Render modules
-    renderCompetencyTab();
-    renderGradesTab();
-    renderCalculatorTab();
-    renderAmoebaTab();
-    renderComparisonsTab();
-    
-    // Initialize Radar Chart structure
-    initRadarChart();
-
-    // Default redirect to first view
-    const firstTabBtn = document.querySelector('.tab-btn[data-tab="tab-competency"]');
-    if (firstTabBtn) firstTabBtn.click();
-    
-    initIcons();
-}
-
-function initTabs() {
-    const tabBtns = document.querySelectorAll(".tab-btn");
-    const tabViews = document.querySelectorAll(".tab-view");
-    
-    tabBtns.forEach(btn => {
+    // 4. Tab switching logic
+    tabButtons.forEach(btn => {
         btn.addEventListener("click", () => {
-            const tabId = btn.getAttribute("data-tab");
-            
-            tabBtns.forEach(b => b.classList.remove("active"));
-            tabViews.forEach(v => v.classList.remove("active"));
-            
+            tabButtons.forEach(el => el.classList.remove("active"));
+            tabContents.forEach(el => el.classList.remove("active"));
+
             btn.classList.add("active");
-            document.getElementById(tabId).classList.add("active");
+            const tabId = `tab-${btn.dataset.tab}`;
+            const targetContent = document.getElementById(tabId);
+            if (targetContent) {
+                targetContent.classList.add("active");
+            }
             
-            // Recheck/Update radar layout on tab swap
-            if (tabId === "tab-calculator") {
+            // Re-render chart if switching to self-eval tab
+            if (btn.dataset.tab === "self-eval") {
                 updateRadarChart();
             }
         });
     });
 
-    const subTabBtns = document.querySelectorAll(".sub-tab-btn");
-    const subTabContents = document.querySelectorAll(".sub-tab-content");
-
-    subTabBtns.forEach(btn => {
-        btn.addEventListener("click", () => {
-            const subId = btn.getAttribute("data-sub");
-
-            subTabBtns.forEach(b => b.classList.remove("active"));
-            subTabContents.forEach(c => c.classList.remove("active"));
-
-            btn.classList.add("active");
-            document.getElementById(subId).classList.add("active");
-        });
-    });
-}
-
-// ==========================================
-// RENDER COMPONENT METHODS
-// ==========================================
-
-function renderCompetencyTab() {
-    const tableBody = document.getElementById("competency-table-body");
-    tableBody.innerHTML = "";
-    
-    const roleData = SALARY_DATA[activeRole];
-    if (!roleData.categories || roleData.categories.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="7" style="text-align:center;">此職缺無能力矩陣數據</td></tr>`;
-        return;
-    }
-    
-    roleData.categories.forEach(cat => {
-        const catRow = document.createElement("tr");
-        catRow.className = "category-row";
-        catRow.innerHTML = `<td colspan="7">[${cat.code}] ${cat.name}</td>`;
-        tableBody.appendChild(catRow);
+    // 5. Load Active Job Content
+    const loadActiveJobData = () => {
+        if (!activeJob) return;
         
-        cat.items.forEach(item => {
-            const tr = document.createElement("tr");
-            tr.className = "comp-row";
-            tr.setAttribute("data-is-bonus", item.is_bonus ? "true" : "false");
-            
-            let stars = item.importance;
-            if (!stars.includes("★") && !stars.includes("⭐")) {
-                const count = parseInt(stars) || 3;
-                stars = "★".repeat(count);
-            }
-            
-            tr.innerHTML = `
-                <td style="font-family: var(--font-mono); font-weight:bold;">${item.code}</td>
-                <td style="font-weight:600; color:var(--text-muted);">${item.dimension}</td>
-                <td>
-                    <strong>${item.name}</strong>
-                    ${item.is_bonus ? '<span class="badge-bonus">加分項</span>' : ''}
-                    ${item.name.includes("【新】") ? '<span class="badge-new">NEW</span>' : ''}
-                </td>
-                <td>
-                    <div style="white-space: pre-wrap; font-size:12px; color:var(--text-main);">${item.description}</div>
-                    ${item.question ? `<div style="margin-top:6px; font-style:italic; color:var(--primary-steel-dark); font-size:11px; font-weight:500;">📋 查核要點：${item.question}</div>` : ''}
-                </td>
-                <td><span class="importance-stars">${stars}</span></td>
-                <td style="font-family: var(--font-mono); text-align:center; font-weight:bold;">${item.weight}</td>
-                <td style="font-size:11.5px; color:var(--text-muted);">${item.gate || '--'}</td>
-            `;
-            tableBody.appendChild(tr);
-        });
-    });
+        currentRoleTitle.textContent = activeJob.job_name;
 
-    const filterBtns = document.querySelectorAll(".filter-controls .filter-btn");
-    filterBtns.forEach(btn => {
-        btn.addEventListener("click", () => {
-            filterBtns.forEach(b => b.classList.remove("active"));
-            btn.classList.add("active");
-            
-            const val = btn.getAttribute("data-filter");
-            const rows = tableBody.querySelectorAll(".comp-row");
-            
-            rows.forEach(row => {
-                const isBonus = row.getAttribute("data-is-bonus") === "true";
-                if (val === "all") row.style.display = "table-row";
-                else if (val === "core") row.style.display = isBonus ? "none" : "table-row";
-                else if (val === "bonus") row.style.display = isBonus ? "table-row" : "none";
-            });
+        // Reset evaluation scores
+        evalScores = {};
+        activeJob.competencies.forEach(c => {
+            evalScores[c.code] = 0; // Default to 0
         });
-    });
-}
 
-function renderGradesTab() {
-    const tableBody = document.getElementById("grades-table-body");
-    tableBody.innerHTML = "";
-    
-    const chartContainer = document.getElementById("salary-chart-bars");
-    chartContainer.innerHTML = "";
-    
-    const roleData = SALARY_DATA[activeRole];
-    if (!roleData.grades || roleData.grades.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">無薪等頻寬數據</td></tr>`;
-        chartContainer.innerHTML = `<div style="text-align:center; padding:20px; color:var(--text-muted);">無結構表資料</div>`;
-        return;
-    }
-    
-    const minScale = 20000;
-    const maxScale = 140000;
-    const scaleRange = maxScale - minScale;
-    
-    roleData.grades.forEach(g => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-            <td style="font-family: var(--font-mono); font-weight:bold; color:var(--primary-steel-dark);">${g.grade}</td>
-            <td>
-                <strong>${g.title_zh}</strong><br>
-                <small style="font-family:var(--font-mono); color:var(--text-muted);">${g.title_en}</small>
-            </td>
-            <td style="font-family: var(--font-mono); font-weight:bold;">
-                NT$ ${g.min_salary.toLocaleString()} ~ ${g.max_salary.toLocaleString()}
-            </td>
-            <td style="font-size:12.5px; line-height: 1.45;">
-                <div style="margin-bottom:4px;"><strong>能力要求：</strong>${g.core_requirements}</div>
-                ${g.promotion_requirements ? `<div><strong>晉升標準：</strong>${g.promotion_requirements}</div>` : ''}
-            </td>
-            <td style="font-size:12px; font-weight: 600; color:var(--hud-purple);">${g.amoeba_role || '--'}</td>
+        renderSalaryTab();
+        renderMatrixTab();
+        renderSelfEvalTab();
+        renderInterviewTab();
+        
+        // Return tab buttons to the first tab (Salary) when changing jobs
+        const salaryTabBtn = document.querySelector('.tab-btn[data-tab="salary"]');
+        if (salaryTabBtn) salaryTabBtn.click();
+    };
+
+    // TAB 1: SALARY RENDER
+    const renderSalaryTab = () => {
+        const container = document.getElementById("salary-range-bars-container");
+        const detailsContainer = document.getElementById("salary-detail-content");
+        container.innerHTML = "";
+        detailsContainer.innerHTML = `
+            <div class="empty-state">
+                <i data-lucide="mouse-pointer-click"></i>
+                <p>請點擊左側薪資圖表中的職等，以檢視其詳細核心要求與晉升標準。</p>
+            </div>
         `;
-        tableBody.appendChild(tr);
+        initIcons();
+
+        // Get salary structure or fallback to default
+        let salaryData = activeJob.salary_structure || [];
+        let isFallback = false;
+        if (salaryData.length === 0) {
+            salaryData = generateDefaultSalary(activeJob.job_name);
+            isFallback = true;
+        }
+
+        // Calculate maximum top salary to normalize the width
+        let maxSalaryVal = 0;
+        salaryData.forEach(item => {
+            const val = parseInt(item.salary_max) || 0;
+            if (val > maxSalaryVal) maxSalaryVal = val;
+        });
+
+        // Fallback max check
+        if (maxSalaryVal === 0) maxSalaryVal = 100000;
+
+        // Render bars
+        salaryData.forEach((item, index) => {
+            const min = parseInt(item.salary_min) || 0;
+            const max = parseInt(item.salary_max) || 0;
+            
+            // Calculate percentage positions for range bar
+            const minPercent = (min / maxSalaryVal) * 100;
+            const maxPercent = (max / maxSalaryVal) * 100;
+            const widthPercent = maxPercent - minPercent;
+
+            const barElement = document.createElement("div");
+            barElement.className = `salary-bar-item ${index === 0 ? 'selected' : ''}`;
+            barElement.innerHTML = `
+                <div class="bar-meta">
+                    <span class="grade-code">${item.grade}</span>
+                    <span class="title">${item.title_zh} <small style="color:var(--text-muted);font-weight:normal;">${item.title_en}</small></span>
+                </div>
+                <div class="bar-track">
+                    <div class="bar-fill" style="left: ${minPercent}%; width: ${widthPercent}%;"></div>
+                </div>
+                <div class="bar-values">
+                    <span>$${min.toLocaleString()}</span>
+                    <span>$${max.toLocaleString()}</span>
+                </div>
+            `;
+
+            barElement.addEventListener("click", () => {
+                document.querySelectorAll(".salary-bar-item").forEach(el => el.classList.remove("selected"));
+                barElement.classList.add("selected");
+                renderSalaryDetail(item, isFallback);
+            });
+
+            container.appendChild(barElement);
+        });
+
+        // Trigger detail rendering for the first element by default
+        if (salaryData.length > 0) {
+            renderSalaryDetail(salaryData[0], isFallback);
+            const firstBar = container.querySelector(".salary-bar-item");
+            if (firstBar) firstBar.classList.add("selected");
+        }
+    };
+
+    const renderSalaryDetail = (item, isFallback) => {
+        const detailsContainer = document.getElementById("salary-detail-content");
         
-        // Render bar in telemetry chart
-        const barRow = document.createElement("div");
-        barRow.className = "salary-bar-row";
+        const minStr = parseInt(item.salary_min) ? `$${parseInt(item.salary_min).toLocaleString()}` : "面議";
+        const maxStr = parseInt(item.salary_max) ? `$${parseInt(item.salary_max).toLocaleString()}` : "面議";
         
-        const leftPercent = Math.max(0, ((g.min_salary - minScale) / scaleRange) * 100);
-        const widthPercent = Math.max(8, ((g.max_salary - g.min_salary) / scaleRange) * 100);
-        
-        barRow.innerHTML = `
-            <span class="grade-lbl">${g.grade}</span>
-            <div class="salary-bar-wrapper">
-                <div class="salary-bar-fill" style="left: ${leftPercent}%; width: ${widthPercent}%;">
-                    $${Math.round(g.min_salary/1000)}k~$${Math.round(g.max_salary/1000)}k
+        detailsContainer.innerHTML = `
+            <div class="salary-detail-card">
+                <div class="detail-header">
+                    <div>
+                        <h3>${item.grade} | ${item.title_zh}</h3>
+                        <span>${item.title_en}</span>
+                    </div>
+                    <div class="detail-salary-badge">
+                        ${minStr} ~ ${maxStr} NTD
+                    </div>
+                </div>
+                
+                ${isFallback ? '<div style="color:var(--accent-teak-dark);font-size:11px;font-weight:600;margin-bottom:12px;background:var(--accent-teak-light);padding:4px 8px;border-radius:4px;"><i data-lucide="info" style="display:inline-block;width:12px;height:12px;vertical-align:middle;margin-right:4px;"></i>本數據為職階估算薪資區間，實際給薪依學經歷面議評定。</div>' : ''}
+
+                <div class="detail-section">
+                    <h5><i data-lucide="check-square" style="display:inline-block;width:14px;height:14px;vertical-align:middle;margin-right:4px;color:var(--primary-steel);"></i> 主要職職責與能力要求</h5>
+                    <p>${item.requirements || "暫無詳細要求說明"}</p>
+                </div>
+
+                <div class="detail-section">
+                    <h5><i data-lucide="trending-up" style="display:inline-block;width:14px;height:14px;vertical-align:middle;margin-right:4px;color:var(--primary-steel);"></i> 適用晉升條件</h5>
+                    <p>${item.promotion || "完成階段性職能考核與年度考評認證"}</p>
+                </div>
+
+                <div class="detail-section">
+                    <h5><i data-lucide="shield-alert" style="display:inline-block;width:14px;height:14px;vertical-align:middle;margin-right:4px;color:var(--primary-steel);"></i> 阿米巴角色分類</h5>
+                    <p>${item.amoeba || "一般執行成員 / 學習者"}</p>
                 </div>
             </div>
         `;
-        chartContainer.appendChild(barRow);
-    });
-}
-
-function renderCalculatorTab() {
-    const roleData = SALARY_DATA[activeRole];
-    
-    // 1. One-Vote Checklist
-    const vetoContainer = document.getElementById("veto-checkboxes-container");
-    vetoContainer.innerHTML = "";
-    
-    let allFailConditions = [];
-    if (roleData.gates) {
-        roleData.gates.forEach(gate => {
-            if (gate.fail_conditions) {
-                gate.fail_conditions.forEach(cond => {
-                    if (!allFailConditions.includes(cond)) {
-                        allFailConditions.push(cond);
-                    }
-                });
-            }
-        });
-    }
-    
-    if (allFailConditions.length === 0) {
-        vetoContainer.innerHTML = `<div style="font-size:12px; color:var(--text-muted); font-style:italic;">無設定否決性條款</div>`;
-    } else {
-        allFailConditions.forEach((cond, index) => {
-            const div = document.createElement("div");
-            div.className = "veto-item";
-            const checkId = `veto-check-${index}`;
-            div.innerHTML = `
-                <input type="checkbox" id="${checkId}">
-                <label for="${checkId}">否決: ${cond}</label>
-            `;
-            vetoContainer.appendChild(div);
-            
-            const checkbox = div.querySelector("input");
-            checkbox.addEventListener("change", (e) => {
-                currentVetos[index] = e.target.checked;
-                recalculateScores();
-            });
-        });
-    }
-
-    // 2. Score Row Items
-    const scorersContainer = document.getElementById("scorers-list-container");
-    scorersContainer.innerHTML = "";
-    
-    roleData.categories.forEach(cat => {
-        const header = document.createElement("div");
-        header.className = "scorers-group-header";
-        header.textContent = `[${cat.code}] ${cat.name}`;
-        scorersContainer.appendChild(header);
-        
-        cat.items.forEach(item => {
-            const row = document.createElement("div");
-            row.className = "scorer-row";
-            row.setAttribute("data-code", item.code);
-            row.setAttribute("data-is-bonus", item.is_bonus ? "true" : "false");
-            
-            row.innerHTML = `
-                <div class="info-col">
-                    <div>
-                        <span class="code-badge">${item.code}</span>
-                        <span class="name-lbl">${item.name}</span>
-                        ${item.is_bonus ? '<span class="badge-bonus">加分項</span>' : ''}
-                    </div>
-                    <div class="desc-lbl">${item.description}</div>
-                </div>
-                <div class="btn-group-score">
-                    <button class="score-pill-btn active" data-score="0">0</button>
-                    <button class="score-pill-btn" data-score="1">1</button>
-                    <button class="score-pill-btn" data-score="2">2</button>
-                    <button class="score-pill-btn" data-score="3">3</button>
-                </div>
-            `;
-            scorersContainer.appendChild(row);
-            
-            const buttons = row.querySelectorAll(".score-pill-btn");
-            buttons.forEach(btn => {
-                btn.addEventListener("click", () => {
-                    const score = parseInt(btn.getAttribute("data-score"));
-                    
-                    buttons.forEach(b => b.classList.remove("active"));
-                    btn.classList.add("active");
-                    
-                    currentScores[item.code] = score;
-                    recalculateScores();
-                    updateRadarChart();
-                });
-            });
-        });
-    });
-
-    // Reset & Max Scorers
-    document.getElementById("btn-reset-scores").onclick = () => {
-        document.querySelectorAll(".score-pill-btn").forEach(btn => {
-            if (btn.getAttribute("data-score") === "0") btn.classList.add("active");
-            else btn.classList.remove("active");
-        });
-        document.querySelectorAll(".veto-item input").forEach(cb => cb.checked = false);
-        
-        Object.keys(currentScores).forEach(k => currentScores[k] = 0);
-        Object.keys(currentVetos).forEach(k => currentVetos[k] = false);
-        
-        recalculateScores();
-        updateRadarChart();
+        initIcons();
     };
 
-    document.getElementById("btn-max-scores").onclick = () => {
-        document.querySelectorAll(".score-pill-btn").forEach(btn => {
-            if (btn.getAttribute("data-score") === "3") btn.classList.add("active");
-            else btn.classList.remove("active");
-        });
-        Object.keys(currentScores).forEach(k => currentScores[k] = 3);
-        recalculateScores();
-        updateRadarChart();
-    };
-
-    // Bind Assessment Report Cards Export Buttons
-    document.getElementById("btn-export-report").onclick = showReportModal;
-    document.getElementById("btn-close-modal").onclick = closeReportModal;
-    document.getElementById("btn-print-report").onclick = () => window.print();
-    document.getElementById("btn-copy-report").onclick = copyReportText;
-}
-
-function recalculateScores() {
-    const roleData = SALARY_DATA[activeRole];
-    
-    let coreScore = 0;
-    let maxCoreScore = 0;
-    let bonusScore = 0;
-    let maxBonusScore = 0;
-    
-    let scored = 0;
-    let total = 0;
-    
-    roleData.categories.forEach(cat => {
-        cat.items.forEach(item => {
-            total++;
-            const score = currentScores[item.code] || 0;
-            if (score > 0) scored++;
-            
-            const wScore = score * item.weight;
-            const maxWScore = 3 * item.weight;
-            
-            if (item.is_bonus) {
-                bonusScore += wScore;
-                maxBonusScore += maxWScore;
-            } else {
-                coreScore += wScore;
-                maxCoreScore += maxWScore;
-            }
-        });
-    });
-
-    document.getElementById("hud-core-score").textContent = Math.round(coreScore);
-    document.getElementById("hud-bonus-score").textContent = Math.round(bonusScore);
-    
-    const circ = 251.2;
-    const corePercent = maxCoreScore > 0 ? coreScore / maxCoreScore : 0;
-    const bonusPercent = maxBonusScore > 0 ? bonusScore / maxBonusScore : 0;
-    
-    document.getElementById("core-gauge-circle").style.strokeDashoffset = circ - (corePercent * circ);
-    document.getElementById("bonus-gauge-circle").style.strokeDashoffset = circ - (bonusPercent * circ);
-
-    const progressPercent = total > 0 ? Math.round((scored / total) * 100) : 0;
-    document.getElementById("calc-progress-fill").style.width = `${progressPercent}%`;
-    document.getElementById("calc-progress-percent").textContent = `${progressPercent}%`;
-
-    // Check Veto conditions
-    let vetoTriggered = false;
-    let vetoReason = "";
-    document.querySelectorAll(".veto-item input").forEach((cb) => {
-        if (cb.checked) {
-            vetoTriggered = true;
-            vetoReason = cb.nextElementSibling.textContent.replace("否決: ", "");
-        }
-    });
-
-    const vetoWarning = document.getElementById("veto-warning-lamp");
-    const vetoStatusText = document.getElementById("veto-status-text");
-    if (vetoTriggered) {
-        vetoWarning.classList.add("blinking");
-        vetoStatusText.textContent = `🚨 否決: ${vetoReason}`;
-        vetoStatusText.className = "value color-red";
-    } else {
-        vetoWarning.classList.remove("blinking");
-        vetoStatusText.textContent = "安全 (無否決條款觸發) 🟢";
-        vetoStatusText.className = "value color-green";
-    }
-
-    // Recommended Grade Matcher
-    let recommendedGrade = null;
-    if (roleData.gates && roleData.gates.length > 0 && !vetoTriggered) {
-        const reversedGates = [...roleData.gates].reverse();
-        for (let i = 0; i < reversedGates.length; i++) {
-            const gate = reversedGates[i];
-            if (coreScore >= gate.core_gate && bonusScore >= gate.bonus_gate) {
-                recommendedGrade = gate;
-                break;
-            }
-        }
-    }
-
-    const gradeOutput = document.getElementById("calc-recommended-grade");
-    const salaryOutput = document.getElementById("calc-recommended-salary");
-    const amoebaOutput = document.getElementById("calc-amoeba-role");
-    const calcStatusLamp = document.getElementById("calc-status-lamp");
-
-    // Visual scale mappings
-    const scaleMin = 20000;
-    const scaleMax = 140000;
-    const scaleRange = scaleMax - scaleMin;
-
-    let roleMin = Infinity;
-    let roleMax = -Infinity;
-    roleData.grades.forEach(g => {
-        if (g.min_salary < roleMin) roleMin = g.min_salary;
-        if (g.max_salary > roleMax) roleMax = g.max_salary;
-    });
-
-    if (roleMin === Infinity) roleMin = 30000;
-    if (roleMax === -Infinity) roleMax = 130000;
-
-    document.getElementById("beam-axis-min").textContent = `$${Math.round(roleMin/1000)}k`;
-    document.getElementById("beam-axis-max").textContent = `$${Math.round(roleMax/1000)}k`;
-    document.getElementById("beam-axis-mid").textContent = `$${Math.round((roleMin+roleMax)/2000)}k`;
-
-    const highlightLeft = Math.max(0, ((roleMin - scaleMin) / scaleRange) * 100);
-    const highlightWidth = Math.max(10, ((roleMax - roleMin) / scaleRange) * 100);
-    
-    const beamHighlight = document.getElementById("salary-beam-highlight");
-    beamHighlight.style.left = `${highlightLeft}%`;
-    beamHighlight.style.width = `${highlightWidth}%`;
-
-    const beamIndicator = document.getElementById("salary-beam-indicator");
-    const beamVal = document.getElementById("salary-beam-val");
-
-    if (vetoTriggered) {
-        gradeOutput.textContent = "✗ 否決不錄用";
-        gradeOutput.className = "value color-red";
-        salaryOutput.textContent = "--";
-        amoebaOutput.textContent = "--";
-        calcStatusLamp.className = "status-lamp red-lamp blinking";
+    // TAB 2: COMPETENCY MATRIX RENDER
+    const renderMatrixTab = () => {
+        const countSpan = document.getElementById("competency-count");
+        const container = document.getElementById("matrix-categories-container");
+        container.innerHTML = "";
         
-        beamIndicator.style.left = `0%`;
-        beamVal.textContent = "VETO";
-        beamVal.style.color = "var(--hud-red)";
-    } else if (recommendedGrade) {
-        gradeOutput.textContent = `${recommendedGrade.grade} (${recommendedGrade.title})`;
-        gradeOutput.className = "value color-yellow";
-        salaryOutput.textContent = `NT$ ${recommendedGrade.salary_range}`;
-        
-        const matchedGradeStruct = roleData.grades.find(g => g.grade === recommendedGrade.grade);
-        amoebaOutput.textContent = matchedGradeStruct ? matchedGradeStruct.amoeba_role : "--";
-        calcStatusLamp.className = "status-lamp green-lamp blinking";
-
-        let minVal = 30000;
-        let maxVal = 40000;
-        if (matchedGradeStruct) {
-            minVal = matchedGradeStruct.min_salary;
-            maxVal = matchedGradeStruct.max_salary;
-        }
-        const midVal = (minVal + maxVal) / 2;
-
-        const indicatorLeft = Math.max(0, Math.min(100, ((midVal - scaleMin) / scaleRange) * 100));
-        beamIndicator.style.left = `${indicatorLeft}%`;
-        beamVal.textContent = `$${Math.round(midVal/1000)}k`;
-        beamVal.style.color = "var(--primary-steel-dark)";
-    } else {
-        gradeOutput.textContent = "未達任用門檻";
-        gradeOutput.className = "value color-red";
-        salaryOutput.textContent = "--";
-        amoebaOutput.textContent = "--";
-        calcStatusLamp.className = "status-lamp red-lamp";
-        
-        beamIndicator.style.left = `0%`;
-        beamVal.textContent = "--";
-        beamVal.style.color = "var(--text-muted)";
-    }
-
-    // Dynamic Gates reference checklist
-    const gatesList = document.getElementById("calc-gates-status-list");
-    gatesList.innerHTML = "";
-    
-    if (roleData.gates) {
-        roleData.gates.forEach(gate => {
-            const passCore = coreScore >= gate.core_gate;
-            const passBonus = bonusScore >= gate.bonus_gate;
-            const passAll = passCore && passBonus;
-            
-            const div = document.createElement("div");
-            div.className = `gate-row-telemetry ${passAll ? 'passed' : 'failed'}`;
-            
-            div.innerHTML = `
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <span class="status-indicator"></span>
-                    <span class="name">${gate.grade} - ${gate.title}</span>
-                </div>
-                <div class="scores">
-                    核心: ${Math.round(coreScore)}/${gate.core_gate} | 
-                    加分: ${Math.round(bonusScore)}/${gate.bonus_gate}
-                </div>
-            `;
-            gatesList.appendChild(div);
-        });
-    }
-}
-
-// ==========================================
-// RADAR CHART INTEGRATION
-// ==========================================
-
-function initRadarChart() {
-    const roleData = SALARY_DATA[activeRole];
-    if (!roleData.categories || roleData.categories.length === 0) return;
-    
-    const labels = roleData.categories.map(c => {
-        // Truncate category labels if they are too long
-        let title = `[${c.code}] ${c.name}`;
-        if (title.length > 15) {
-            title = title.substring(0, 14) + "...";
-        }
-        return title;
-    });
-
-    const datasetData = roleData.categories.map(() => 0); // initial zeros
-
-    const ctx = document.getElementById('competency-radar-chart').getContext('2d');
-    
-    radarChart = new Chart(ctx, {
-        type: 'radar',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: '職能覆蓋得分 (%)',
-                data: datasetData,
-                backgroundColor: 'rgba(2, 132, 199, 0.2)',
-                borderColor: 'rgba(2, 132, 199, 0.8)',
-                borderWidth: 2,
-                pointBackgroundColor: 'rgba(2, 132, 199, 1)',
-                pointBorderColor: '#fff',
-                pointHoverBackgroundColor: '#fff',
-                pointHoverBorderColor: 'rgba(2, 132, 199, 1)'
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                r: {
-                    angleLines: {
-                        color: '#cbd5e1'
-                    },
-                    grid: {
-                        color: '#f1f5f9'
-                    },
-                    pointLabels: {
-                        font: {
-                            family: "'Inter', sans-serif",
-                            size: 9,
-                            weight: 'bold'
-                        },
-                        color: '#475569'
-                    },
-                    ticks: {
-                        stepSize: 20,
-                        font: {
-                            size: 8
-                        }
-                    },
-                    suggestedMin: 0,
-                    suggestedMax: 100
-                }
-            },
-            plugins: {
-                legend: {
-                    display: false
-                }
-            }
-        }
-    });
-
-    updateRadarChart();
-}
-
-function updateRadarChart() {
-    if (!radarChart) return;
-    const roleData = SALARY_DATA[activeRole];
-    if (!roleData.categories) return;
-
-    // Calculate percentage achieved for each category
-    const percentages = roleData.categories.map(cat => {
-        let earned = 0;
-        let maxPossible = 0;
-        cat.items.forEach(item => {
-            const score = currentScores[item.code] || 0;
-            earned += score * item.weight;
-            maxPossible += 3 * item.weight;
-        });
-        return maxPossible > 0 ? Math.round((earned / maxPossible) * 100) : 0;
-    });
-
-    radarChart.data.datasets[0].data = percentages;
-    radarChart.update();
-}
-
-// ==========================================
-// AMOEBA & COMPARISON RENDERING
-// ==========================================
-
-function renderAmoebaTab() {
-    const roleData = SALARY_DATA[activeRole];
-    
-    const descEl = document.getElementById("amoeba-formula-text");
-    if (roleData.amoeba && roleData.amoeba.formula) {
-        descEl.innerHTML = `阿米巴核算公式：<strong>${roleData.amoeba.formula}</strong>`;
-    } else {
-        descEl.textContent = "時間附加值 = (銷售額分攤 - 外部費用) ÷ 總工時";
-    }
-
-    const tableHead = document.getElementById("amoeba-table-head");
-    const tableBody = document.getElementById("amoeba-table-body");
-    tableHead.innerHTML = "";
-    tableBody.innerHTML = "";
-
-    if (!roleData.amoeba || !roleData.amoeba.rows || roleData.amoeba.rows.length === 0) {
-        let backupAmoebaSheet = Object.keys(roleData.raw_sheets).find(k => k.includes("阿米巴") || k.includes("損益"));
-        if (backupAmoebaSheet) {
-            renderRawTable(tableHead, tableBody, roleData.raw_sheets[backupAmoebaSheet]);
-        } else {
-            tableBody.innerHTML = `<tr><td style="text-align:center; padding:20px; color:var(--text-muted);">本職稱未配置阿米巴核算表。</td></tr>`;
-        }
-        return;
-    }
-
-    const rows = roleData.amoeba.rows;
-    const headers = [
-        "日期", "星期", "作業類別/項目", "完成數/件數", "總工時 (h)", "分攤銷售額 (NTD)", "外部費用 (NTD)", "附加值 (NTD)", "工時附加值 (NTD/h)"
-    ];
-    
-    let trHead = document.createElement("tr");
-    headers.forEach(h => {
-        let th = document.createElement("th");
-        th.textContent = h;
-        trHead.appendChild(th);
-    });
-    tableHead.appendChild(trHead);
-
-    rows.forEach(row => {
-        if (row[0] && (row[0].includes("公式") || row[0].includes("附加值") || row[0].includes("損益表"))) {
+        if (!activeJob || activeJob.competencies.length === 0) {
+            countSpan.textContent = "0";
+            container.innerHTML = `<div class="empty-state"><p>無職能指標數據</p></div>`;
             return;
         }
 
-        const tr = document.createElement("tr");
-        let htmlStr = "";
-        let colCount = 9;
-        
-        for (let i = 0; i < colCount; i++) {
-            let val = row[i] !== undefined ? row[i] : "";
-            
-            if (i === 8 && typeof val === "number") {
-                htmlStr += `<td style="font-family:var(--font-mono); font-weight:bold; color:var(--hud-blue);">$${val.toLocaleString()} / h</td>`;
-            } else if ((i === 5 || i === 6 || i === 7) && typeof val === "number") {
-                htmlStr += `<td style="font-family:var(--font-mono);">$${val.toLocaleString()}</td>`;
-            } else {
-                htmlStr += `<td>${val}</td>`;
-            }
-        }
-        tr.innerHTML = htmlStr;
-        tableBody.appendChild(tr);
-    });
+        countSpan.textContent = activeJob.competencies.length;
 
-    // Sim variables
-    const simSales = document.getElementById("sim-sales");
-    const simExpenses = document.getElementById("sim-expenses");
-    const simHours = document.getElementById("sim-hours");
-    const simTarget = document.getElementById("sim-target-rate");
-
-    function reSimulate() {
-        const sales = parseFloat(simSales.value) || 0;
-        const expenses = parseFloat(simExpenses.value) || 0;
-        const hours = parseFloat(simHours.value) || 1;
-        const target = parseFloat(simTarget.value) || 800;
-
-        const val = sales - expenses;
-        const rate = val / hours;
-        const pct = target > 0 ? (rate / target) * 100 : 0;
-
-        document.getElementById("sim-result-value").textContent = `NT$ ${Math.round(val).toLocaleString()}`;
-        document.getElementById("sim-result-rate").textContent = `NT$ ${rate.toFixed(1)} / h`;
-        
-        const statusEl = document.getElementById("sim-result-status");
-        if (rate >= target) {
-            statusEl.textContent = `已達標 (${pct.toFixed(1)}%) 🟢`;
-            statusEl.className = "value badge green-badge";
-        } else {
-            statusEl.textContent = `未達標 (${pct.toFixed(1)}%) 🚨`;
-            statusEl.className = "value badge red-badge";
-        }
-    }
-
-    simSales.oninput = reSimulate;
-    simExpenses.oninput = reSimulate;
-    simHours.oninput = reSimulate;
-    simTarget.oninput = reSimulate;
-
-    reSimulate();
-}
-
-function renderRawTable(tableHead, tableBody, rows) {
-    if (rows.length === 0) return;
-    
-    let trHead = document.createElement("tr");
-    rows[0].forEach(cell => {
-        let th = document.createElement("th");
-        th.textContent = cell;
-        trHead.appendChild(th);
-    });
-    tableHead.appendChild(trHead);
-
-    for (let r = 1; r < rows.length; r++) {
-        let tr = document.createElement("tr");
-        rows[r].forEach(cell => {
-            let td = document.createElement("td");
-            td.textContent = cell;
-            tr.appendChild(td);
+        // Group competencies by category
+        const groups = {};
+        activeJob.competencies.forEach(item => {
+            const cat = item.category || "【其他核心能力】";
+            if (!groups[cat]) groups[cat] = [];
+            groups[cat].push(item);
         });
-        tableBody.appendChild(tr);
-    }
-}
 
-function renderComparisonsTab() {
-    const roleData = SALARY_DATA[activeRole];
+        // Render each category group
+        for (const [catName, list] of Object.entries(groups)) {
+            const groupDiv = document.createElement("div");
+            groupDiv.className = "matrix-category-group";
+            
+            // Build table headers & rows
+            let rowsHtml = "";
+            list.forEach(item => {
+                // Generate stars HTML
+                let starsHtml = "";
+                const starsCount = parseInt(item.importance) || 3;
+                for (let i = 0; i < 5; i++) {
+                    starsHtml += i < starsCount ? "★" : "☆";
+                }
 
-    // 1. Kanban
-    const todo = document.querySelector("#kanban-todo .kanban-cards-wrapper");
-    const progress = document.querySelector("#kanban-progress .kanban-cards-wrapper");
-    const done = document.querySelector("#kanban-done .kanban-cards-wrapper");
-
-    todo.innerHTML = "";
-    progress.innerHTML = "";
-    done.innerHTML = "";
-
-    let sprintSheet = Object.keys(roleData.raw_sheets).find(k => k.includes("Sprint") || k.includes("敏捷") || k.includes("看板"));
-    let cards = [];
-    
-    if (sprintSheet) {
-        const rows = roleData.raw_sheets[sprintSheet];
-        let hIndex = -1;
-        for (let i = 0; i < rows.length; i++) {
-            if (rows[i][0] && (rows[i][0].includes("Story ID") || rows[i][0].includes("序"))) {
-                hIndex = i;
-                break;
-            }
-        }
-        
-        if (hIndex !== -1) {
-            for (let i = hIndex + 1; i < rows.length; i++) {
-                const r = rows[i];
-                if (!r[0]) continue;
-                cards.push({
-                    id: r[0],
-                    name: r[1] || "工作事項",
-                    desc: r[2] || "任務內容",
-                    owner: r[3] || "主責人員",
-                    points: r[4] || "1",
-                    status: (r[6] || "待辦").trim()
-                });
-            }
-        }
-    }
-
-    if (cards.length === 0) {
-        cards = [
-            { id: "TSK-001", name: "能力考評建檔", desc: "完成受評人員考核分數存檔與核算", owner: "人資部", points: "3", status: "進行中" },
-            { id: "TSK-002", name: "阿米巴核對", desc: "計算本期工時單位時間附加值目標", owner: "巴長", points: "5", status: "待辦" },
-            { id: "TSK-003", name: "文件準備", desc: "彙整 IATF 人員技能訓練記錄歸檔", owner: "廠務課", points: "2", status: "已完成" }
-        ];
-    }
-
-    cards.forEach(card => {
-        const div = document.createElement("div");
-        div.className = "kanban-card";
-        div.innerHTML = `
-            <div class="card-id">${card.id}</div>
-            <div class="card-desc"><strong>${card.name}</strong> - ${card.desc}</div>
-            <div class="card-meta">
-                <span class="owner">${card.owner}</span>
-                <span class="points">${card.points} Pts</span>
-            </div>
-        `;
-        
-        let s = card.status.toLowerCase();
-        if (s.includes("done") || s.includes("完成")) done.appendChild(div);
-        else if (s.includes("progress") || s.includes("進行")) progress.appendChild(div);
-        else todo.appendChild(div);
-    });
-
-    document.querySelector("#kanban-todo .card-count").textContent = todo.children.length;
-    document.querySelector("#kanban-progress .card-count").textContent = progress.children.length;
-    document.querySelector("#kanban-done .card-count").textContent = done.children.length;
-
-    // 2. 104 HR
-    const hrTableBody = document.getElementById("hr104-table-body");
-    hrTableBody.innerHTML = "";
-    let hrSheet = Object.keys(roleData.raw_sheets).find(k => k.includes("104HR") || k.includes("104"));
-    
-    if (hrSheet) {
-        const rows = roleData.raw_sheets[hrSheet];
-        let hIndex = -1;
-        for (let i = 0; i < rows.length; i++) {
-            if (rows[i][0] && rows[i][0].includes("104管理層級")) {
-                hIndex = i;
-                break;
-            }
-        }
-        
-        if (hIndex !== -1) {
-            for (let i = hIndex + 1; i < rows.length; i++) {
-                const r = rows[i];
-                if (!r[0]) continue;
+                // Parse target levels badge
+                const targetLvl = item.target_level || "全職等適用";
                 
-                const tr = document.createElement("tr");
-                tr.innerHTML = `
-                    <td style="font-weight:bold; color:var(--hud-blue);">${r[0]}</td>
-                    <td style="font-weight:600;">${r[1]}</td>
-                    <td style="font-size:12.5px;">${r[2]}</td>
-                    <td style="font-size:12.5px;">${r[3]} ${r[4] ? `<br><small style="color:var(--text-muted)">對照職能: ${r[4]}</small>` : ''}</td>
-                    <td style="font-family:var(--font-mono); text-align:center; font-weight:bold;">${r[5] || '--'}</td>
-                    <td style="font-size:12.5px; color:var(--success-green); font-weight:600;">${r[6] || '--'}</td>
+                rowsHtml += `
+                    <tr>
+                        <td class="cell-code">${item.code}</td>
+                        <td class="cell-dim">${item.dimension}</td>
+                        <td>
+                            <div class="cell-ability">${item.ability}</div>
+                            <span class="category-badge">${targetLvl}</span>
+                            <div class="matrix-level-grid">
+                                <div class="level-box">
+                                    <div class="level-box-title l0">L0 無能力</div>
+                                    <div>${item.levels["0"] || "從未接觸/無相關經驗"}</div>
+                                </div>
+                                <div class="level-box">
+                                    <div class="level-box-title l1">L1 基礎/認知</div>
+                                    <div>${item.levels["1"] || "需在指導下執行"}</div>
+                                </div>
+                                <div class="level-box">
+                                    <div class="level-box-title l2">L2 獨立作業</div>
+                                    <div style="font-weight:500;color:var(--text-main);">${item.levels["2"] || "可獨立操作完成"}</div>
+                                </div>
+                                <div class="level-box">
+                                    <div class="level-box-title l3">L3 主導/導師</div>
+                                    <div>${item.levels["3"] || "可帶訓新人、建立SOP"}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td style="width: 100px; text-align: center;">
+                            <span class="star-rating">${starsHtml}</span>
+                        </td>
+                    </tr>
                 `;
-                hrTableBody.appendChild(tr);
-            }
+            });
+
+            groupDiv.innerHTML = `
+                <div class="category-title-banner">${catName}</div>
+                <table class="matrix-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 60px;">代號</th>
+                            <th style="width: 130px;">職能面向</th>
+                            <th>具體項目與四級判定標準</th>
+                            <th style="width: 100px; text-align: center;">重要度</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rowsHtml}
+                    </tbody>
+                </table>
+            `;
+            container.appendChild(groupDiv);
         }
-    }
-    
-    if (hrTableBody.children.length === 0) {
-        hrTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px; color:var(--text-muted);">本職缺無 104 HR 對照架構</td></tr>`;
-    }
+    };
 
-    // 3. CMP
-    const cmpTableBody = document.getElementById("cmp-table-body");
-    cmpTableBody.innerHTML = "";
-    let cmpSheet = Object.keys(roleData.raw_sheets).find(k => k.includes("CMP") || k.includes("政策"));
-    
-    if (cmpSheet) {
-        const rows = roleData.raw_sheets[cmpSheet];
-        let hIndex = -1;
-        for (let i = 0; i < rows.length; i++) {
-            if (rows[i][0] && rows[i][0].includes("CMP")) {
-                hIndex = i;
-                break;
-            }
+    // TAB 3: SELF EVALUATION & MATCHING RENDER
+    const renderSelfEvalTab = () => {
+        const evalList = document.getElementById("eval-questions-list");
+        evalList.innerHTML = "";
+
+        if (!activeJob || activeJob.competencies.length === 0) {
+            evalList.innerHTML = `<div class="empty-state"><p>無職能指標自評資料</p></div>`;
+            return;
         }
 
-        if (hIndex !== -1) {
-            for (let i = hIndex + 1; i < rows.length; i++) {
-                const r = rows[i];
-                if (!r[0]) continue;
+        activeJob.competencies.forEach(item => {
+            const card = document.createElement("div");
+            card.className = "eval-question-card";
+            card.dataset.code = item.code;
 
-                const tr = document.createElement("tr");
-                tr.innerHTML = `
-                    <td style="font-family:var(--font-mono); font-weight:bold; color:var(--hud-red);">${r[0]}</td>
-                    <td style="font-weight:700;">${r[1]}</td>
-                    <td style="font-size:12.5px;">${r[2]}</td>
-                    <td style="font-size:12.5px; color:var(--hud-blue); font-weight:500;">${r[3]} <br><small style="color:var(--text-muted)">${r[4] || ''}</small></td>
-                    <td style="font-family:var(--font-mono); text-align:center; font-weight:bold;">${r[5] || '--'}</td>
-                    <td style="font-size:12.5px; font-style:italic;">${r[6] || '--'}</td>
-                `;
-                cmpTableBody.appendChild(tr);
+            // Generate stars HTML
+            let starsHtml = "";
+            const starsCount = parseInt(item.importance) || 3;
+            for (let i = 0; i < 5; i++) {
+                starsHtml += i < starsCount ? "★" : "☆";
             }
-        }
-    }
 
-    if (cmpTableBody.children.length === 0) {
-        cmpTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px; color:var(--text-muted);">本職稱無設定 CMP 辦法對照</td></tr>`;
-    }
-}
+            card.innerHTML = `
+                <div class="question-meta">
+                    <div>
+                        <span class="category-badge" style="background-color:var(--primary-steel-light);color:var(--primary-steel-dark);">${item.dimension}</span>
+                        <h4 class="question-title">${item.code}. ${item.ability}</h4>
+                    </div>
+                    <div class="question-meta-right">
+                        <span class="star-rating" style="font-size:11px;">${starsHtml}</span>
+                        <div class="eval-radio-group">
+                            <label class="eval-radio-lbl" data-val="0">
+                                <input type="radio" name="score_${item.code}" value="0" checked>0
+                            </label>
+                            <label class="eval-radio-lbl" data-val="1">
+                                <input type="radio" name="score_${item.code}" value="1">1
+                            </label>
+                            <label class="eval-radio-lbl" data-val="2">
+                                <input type="radio" name="score_${item.code}" value="2">2
+                            </label>
+                            <label class="eval-radio-lbl" data-val="3">
+                                <input type="radio" name="score_${item.code}" value="3">3
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="selected-criteria-box" id="criteria-box-${item.code}">
+                    <strong>能力層級 0: 無能力/不了解</strong>
+                    <span>${item.levels["0"] || "無相關操作經驗。"}</span>
+                </div>
+            `;
 
-// ==========================================
-// REPORT MODAL ENGINE
-// ==========================================
+            // Radio button click listeners
+            const radioLabels = card.querySelectorAll(".eval-radio-lbl");
+            radioLabels.forEach(lbl => {
+                const radio = lbl.querySelector("input");
+                lbl.addEventListener("click", () => {
+                    const score = parseInt(lbl.dataset.val);
+                    radio.checked = true;
+                    
+                    // Toggle active styles
+                    radioLabels.forEach(l => {
+                        l.className = "eval-radio-lbl";
+                    });
+                    lbl.classList.add(`active-${score}`);
 
-function showReportModal() {
-    const roleData = SALARY_DATA[activeRole];
-    const modal = document.getElementById("report-modal");
-    const paper = document.getElementById("report-content-paper");
-    
-    let coreScore = 0;
-    let maxCoreScore = 0;
-    let bonusScore = 0;
-    let maxBonusScore = 0;
-    let scoredItems = [];
-    
-    roleData.categories.forEach(cat => {
-        cat.items.forEach(item => {
-            const score = currentScores[item.code] || 0;
-            const wScore = score * item.weight;
-            const maxWScore = 3 * item.weight;
-            
-            if (score > 0) {
-                scoredItems.push({
-                    code: item.code,
-                    name: item.name,
-                    score: score,
-                    weight: item.weight,
-                    weighted: wScore,
-                    is_bonus: item.is_bonus
+                    // Update criteria detail box
+                    const box = document.getElementById(`criteria-box-${item.code}`);
+                    let lvlName = "無經驗/不了解";
+                    if (score === 1) lvlName = "基礎認知 (需指導協助)";
+                    else if (score === 2) lvlName = "獨立作業 (符合日常標準)";
+                    else if (score === 3) lvlName = "主導/專家 (具帶訓與建立規範能力)";
+
+                    box.innerHTML = `
+                        <strong>能力層級 ${score}: ${lvlName}</strong>
+                        <span>${item.levels[score] || "符合本級別日常作業標準。"}</span>
+                    `;
+
+                    // Update scores model
+                    evalScores[item.code] = score;
+                    calculateMatchingGrade();
                 });
+            });
+
+            // Set default level 0 styling
+            const firstLbl = card.querySelector('.eval-radio-lbl[data-val="0"]');
+            if (firstLbl) firstLbl.classList.add("active-0");
+
+            evalList.appendChild(card);
+        });
+
+        // Reset scores
+        calculateMatchingGrade();
+    };
+
+    // SELF EVAL MATCHING ALGORITHM
+    const calculateMatchingGrade = () => {
+        let totalScore = 0;
+        let answeredCount = 0;
+        const keys = Object.keys(evalScores);
+        keys.forEach(k => {
+            totalScore += evalScores[k];
+            if (evalScores[k] > 0) answeredCount++;
+        });
+
+        document.getElementById("eval-total-score").textContent = `${totalScore}分`;
+
+        // Get salary structure (fallback if needed)
+        let salaryData = activeJob.salary_structure || [];
+        if (salaryData.length === 0) {
+            salaryData = generateDefaultSalary(activeJob.job_name);
+        }
+
+        // Determine matching level
+        // Let's parse custom numeric score thresholds if they are present in salary descriptions
+        // For example: WH3A needs core >=15, WH3B >=25, etc.
+        let matchedItem = salaryData[0]; // default to first/lowest level
+        
+        // Find if thresholds are written in the grade descriptions
+        const maxPossibleScore = keys.length * 3;
+        
+        // Evaluate matching by checking thresholds
+        for (let i = 0; i < salaryData.length; i++) {
+            const item = salaryData[i];
+            
+            // Try to extract threshold score
+            let thresh = -1;
+            
+            // Look into requirements or promotion criteria for "≥[0-9]+" or "門檻"
+            const searchStr = `${item.requirements} ${item.promotion}`.toLowerCase();
+            const scoreMatch = searchStr.match(/門檻\s*≥?\s*(\d+)/) || searchStr.match(/得分\s*≥?\s*(\d+)/) || searchStr.match(/分\s*≥?\s*(\d+)/) || searchStr.match(/(\d+)\s*分\s*(?:門檻|以上)/);
+            
+            if (scoreMatch) {
+                thresh = parseInt(scoreMatch[1]);
+            } else {
+                // Positional logic threshold fallback if no explicit numbers are found in spreadsheet
+                // WH3A: 0, WH3B: 15, WH4A: 38 etc., let's map them by ratio
+                const rankRatio = i / (salaryData.length - 1 || 1);
+                thresh = Math.round(rankRatio * maxPossibleScore * 0.7); // standard threshold ratio (70% of max score for top)
             }
             
-            if (item.is_bonus) {
-                bonusScore += wScore;
-                maxBonusScore += maxWScore;
+            if (thresh !== -1 && totalScore >= thresh) {
+                matchedItem = item;
+            }
+        }
+
+        // Render matched card
+        if (matchedItem) {
+            document.getElementById("match-grade").textContent = matchedItem.grade;
+            
+            const minStr = parseInt(matchedItem.salary_min) ? `NT$ ${parseInt(matchedItem.salary_min).toLocaleString()}` : "面議";
+            const maxStr = parseInt(matchedItem.salary_max) ? `NT$ ${parseInt(matchedItem.salary_max).toLocaleString()}` : "面議";
+            document.getElementById("match-salary").textContent = `${minStr} ~ ${maxStr}`;
+
+            // Build match explanation description
+            let missingSkillsHtml = "";
+            // Find next level requirements
+            const currentIndex = salaryData.indexOf(matchedItem);
+            let nextItem = null;
+            if (currentIndex !== -1 && currentIndex < salaryData.length - 1) {
+                nextItem = salaryData[currentIndex + 1];
+            }
+
+            let advice = "";
+            if (nextItem) {
+                // Extract next item's threshold score
+                let nextThresh = Math.round((currentIndex + 1) / (salaryData.length - 1 || 1) * maxPossibleScore * 0.7);
+                const nextSearch = `${nextItem.requirements} ${nextItem.promotion}`.toLowerCase();
+                const nextScoreMatch = nextSearch.match(/門檻\s*≥?\s*(\d+)/) || nextSearch.match(/得分\s*≥?\s*(\d+)/) || nextSearch.match(/分\s*≥?\s*(\d+)/);
+                if (nextScoreMatch) nextThresh = parseInt(nextScoreMatch[1]);
+
+                const diff = nextThresh - totalScore;
+                advice = `您的自評能力符合 <strong>${matchedItem.title_zh} (${matchedItem.grade})</strong> 級等標準。距離晉升下一階 <strong>${nextItem.title_zh} (${nextItem.grade})</strong> 還差約 <strong>${Math.max(1, diff)} 分</strong>，建議加強關鍵的獨立作業項目 (如重要度為 ★★★★★ 且自評低於 2 分的項目)。`;
             } else {
-                coreScore += wScore;
-                maxCoreScore += maxWScore;
+                advice = `恭喜！您的自評能力已達到該職系的最高職階 <strong>${matchedItem.title_zh} (${matchedItem.grade})</strong> 要求！具備完整的系統規劃與技術帶訓師資歷。`;
+            }
+
+            document.getElementById("match-description-text").innerHTML = advice;
+
+            // Generate career recommendations list
+            const recommendList = document.getElementById("recommendation-list");
+            recommendList.innerHTML = "";
+
+            // Find high importance items where score is low (0 or 1)
+            const weakItems = activeJob.competencies.filter(c => {
+                const score = evalScores[c.code] || 0;
+                const imp = parseInt(c.importance) || 3;
+                return score <= 1 && imp >= 4;
+            });
+
+            if (weakItems.length > 0) {
+                weakItems.slice(0, 3).forEach(item => {
+                    const li = document.createElement("li");
+                    li.innerHTML = `<i data-lucide="trending-up"></i><span>加強 <strong>${item.code} ${item.dimension}</strong>: 需從基礎認知提升至獨立作業。指標要求：${item.levels["2"] || "可獨立執行操作。"}</span>`;
+                    recommendList.appendChild(li);
+                });
+            } else {
+                const li = document.createElement("li");
+                li.innerHTML = `<i data-lucide="check-circle"></i><span>目前無急需加強的關鍵高優先度技能！已具備核心能力防線。</span>`;
+                recommendList.appendChild(li);
+            }
+            initIcons();
+        }
+
+        // Update Circular matched chart background
+        const circ = document.querySelector(".circular-progress");
+        if (circ) {
+            const percent = maxPossibleScore > 0 ? (totalScore / maxPossibleScore) * 100 : 0;
+            circ.style.background = `conic-gradient(var(--primary-steel) ${percent}%, var(--border-office) ${percent}%)`;
+        }
+
+        // Dynamic Radar Chart render
+        updateRadarChart();
+    };
+
+    // UPDATE RADAR CHART VISUALS
+    const updateRadarChart = () => {
+        const ctx = document.getElementById("competency-radar-chart");
+        if (!ctx || !activeJob) return;
+
+        // Group competencies by Dimension to calculate average self rating vs benchmark (2.0)
+        const dimScores = {};
+        activeJob.competencies.forEach(c => {
+            const dim = c.dimension;
+            if (!dimScores[dim]) {
+                dimScores[dim] = { total: 0, count: 0 };
+            }
+            dimScores[dim].total += evalScores[c.code] || 0;
+            dimScores[dim].count++;
+        });
+
+        const labels = Object.keys(dimScores);
+        const userRatings = labels.map(label => {
+            const avg = dimScores[label].total / dimScores[label].count;
+            return parseFloat(avg.toFixed(2));
+        });
+        const benchmarkRatings = labels.map(() => 2.0); // 2.0 represents level 2: 獨立作業
+
+        // Destroy previous chart if exists
+        if (radarChart) {
+            radarChart.destroy();
+        }
+
+        // Draw new chart
+        radarChart = new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: '您的自評能力',
+                        data: userRatings,
+                        backgroundColor: 'rgba(2, 132, 199, 0.2)',
+                        borderColor: 'rgba(2, 132, 199, 1)',
+                        pointBackgroundColor: 'rgba(2, 132, 199, 1)',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: 'rgba(2, 132, 199, 1)',
+                        borderWidth: 2
+                    },
+                    {
+                        label: '基準能力要求 (獨立作業)',
+                        data: benchmarkRatings,
+                        backgroundColor: 'rgba(217, 119, 6, 0.05)',
+                        borderColor: 'rgba(217, 119, 6, 0.5)',
+                        borderDash: [5, 5],
+                        pointBackgroundColor: 'rgba(217, 119, 6, 0.5)',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: 'rgba(217, 119, 6, 0.5)',
+                        borderWidth: 1.5
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    r: {
+                        angleLines: {
+                            color: document.documentElement.getAttribute('data-theme') === 'dark' ? '#334155' : '#cbd5e1'
+                        },
+                        grid: {
+                            color: document.documentElement.getAttribute('data-theme') === 'dark' ? '#334155' : '#cbd5e1'
+                        },
+                        pointLabels: {
+                            font: {
+                                size: 10,
+                                family: 'Inter'
+                            },
+                            color: document.documentElement.getAttribute('data-theme') === 'dark' ? '#cbd5e1' : '#334155'
+                        },
+                        suggestedMin: 0,
+                        suggestedMax: 3,
+                        ticks: {
+                            stepSize: 1,
+                            color: document.documentElement.getAttribute('data-theme') === 'dark' ? '#94a3b8' : '#64748b',
+                            backdropColor: 'transparent'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: {
+                            boxWidth: 12,
+                            font: {
+                                size: 11
+                            },
+                            color: document.documentElement.getAttribute('data-theme') === 'dark' ? '#cbd5e1' : '#334155'
+                        }
+                    }
+                }
             }
         });
-    });
+    };
 
-    let vetoTriggered = false;
-    let triggeredVetoes = [];
-    document.querySelectorAll(".veto-item input").forEach((cb) => {
-        if (cb.checked) {
-            vetoTriggered = true;
-            triggeredVetoes.push(cb.nextElementSibling.textContent.replace("否決: ", ""));
-        }
-    });
-
-    let recommendedGrade = null;
-    if (roleData.gates && roleData.gates.length > 0 && !vetoTriggered) {
-        const reversedGates = [...roleData.gates].reverse();
-        for (let i = 0; i < reversedGates.length; i++) {
-            const gate = reversedGates[i];
-            if (coreScore >= gate.core_gate && bonusScore >= gate.bonus_gate) {
-                recommendedGrade = gate;
-                break;
-            }
-        }
+    // RESET EVALUATION QUESTIONS
+    const resetEvalBtn = document.getElementById("reset-eval-btn");
+    if (resetEvalBtn) {
+        resetEvalBtn.addEventListener("click", () => {
+            const cards = document.querySelectorAll(".eval-question-card");
+            cards.forEach(card => {
+                const radioLabels = card.querySelectorAll(".eval-radio-lbl");
+                radioLabels.forEach(lbl => {
+                    lbl.className = "eval-radio-lbl";
+                    if (lbl.dataset.val === "0") {
+                        lbl.classList.add("active-0");
+                        lbl.querySelector("input").checked = true;
+                    }
+                });
+                
+                const itemCode = card.dataset.code;
+                const item = activeJob.competencies.find(c => c.code === itemCode);
+                
+                const box = document.getElementById(`criteria-box-${itemCode}`);
+                box.innerHTML = `
+                    <strong>能力層級 0: 無能力/不了解</strong>
+                    <span>${item.levels["0"] || "無相關操作經驗。"}</span>
+                `;
+                
+                evalScores[itemCode] = 0;
+            });
+            
+            calculateMatchingGrade();
+        });
     }
 
-    const matchedGradeStruct = recommendedGrade ? roleData.grades.find(g => g.grade === recommendedGrade.grade) : null;
-    const amoebaRole = matchedGradeStruct ? matchedGradeStruct.amoeba_role : "--";
+    // TAB 4: INTERVIEW GUIDE RENDER
+    const renderInterviewTab = () => {
+        const container = document.getElementById("interview-list-container");
+        container.innerHTML = "";
 
-    let html = `
-        <div class="report-header">
-            <!-- TWL Logo Image -->
-            <img src="logo.png" alt="TWL Logo" class="twl-logo-report">
-            <h2>騏宏科技股份有限公司</h2>
-            <div style="font-size:15px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; margin-top:6px;">職能等級與薪資核定評估報告書</div>
-            <div style="font-size:10px; color:var(--text-muted); font-family:var(--font-mono); margin-top:4px;">DOCID: QH-REP-FM-${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}</div>
-        </div>
+        if (!activeJob || activeJob.competencies.length === 0) {
+            container.innerHTML = `<div class="empty-state"><p>無面試查核指南資料</p></div>`;
+            return;
+        }
+
+        activeJob.competencies.forEach(item => {
+            if (!item.questions || item.questions.trim() === "") return;
+
+            const card = document.createElement("div");
+            card.className = "interview-card";
+            card.innerHTML = `
+                <div class="card-question">
+                    <div style="display:flex;align-items:flex-start;gap:8px;">
+                        <span class="lbl-q">Q</span>
+                        <h4>【${item.dimension}】${item.questions}</h4>
+                    </div>
+                    <i data-lucide="chevron-down" class="toggle-icon"></i>
+                </div>
+                <div class="card-answer">
+                    <div class="answer-header">💡 面試官評核重點與作答指南：</div>
+                    <p style="margin-bottom:8px;"><strong>本項能力指標：</strong>${item.code} ${item.ability}</p>
+                    <p style="color:var(--text-muted);">請針對本題結合您的實際工作案例進行回答。回答應包含：(1) 您曾經操作/處理過此項技術的專案經驗。(2) 當發生异常時，您是如何按照相關標準 SOP（如 IATF 或公司專利規範）進行處置或升報的。(3) 具備 Level 2（獨立執行）或 Level 3（主導培訓）的實際績效數據證明。</p>
+                </div>
+            `;
+
+            // Toggle card collapse
+            card.addEventListener("click", () => {
+                const isOpen = card.classList.contains("open");
+                document.querySelectorAll(".interview-card").forEach(c => c.classList.remove("open"));
+                if (!isOpen) {
+                    card.classList.add("open");
+                }
+            });
+
+            container.appendChild(card);
+        });
+
+        initIcons();
         
-        <div class="report-meta-grid">
-            <div><strong>核定職缺:</strong> ${activeRole}</div>
-            <div><strong>依據文件:</strong> ${roleData.filename}</div>
-            <div><strong>核估時間:</strong> ${document.getElementById("current-time").textContent}</div>
-            <div><strong>評核終端:</strong> QH-GradeTelemetry v2.7</div>
-        </div>
-        
-        <div class="report-section">
-            <h3>一、 評分數據彙整</h3>
-            <table class="report-table">
-                <thead>
-                    <tr>
-                        <th>能力維度</th>
-                        <th>得加權總分</th>
-                        <th>本職能總配分</th>
-                        <th>得分百分比</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td><strong>[核心能力加權得分]</strong></td>
-                        <td><strong>${Math.round(coreScore)} 分</strong></td>
-                        <td>${Math.round(maxCoreScore)} 分</td>
-                        <td>${maxCoreScore > 0 ? ((coreScore/maxCoreScore)*100).toFixed(1) : 0}%</td>
-                    </tr>
-                    <tr>
-                        <td><strong>[加分項加權得分]</strong></td>
-                        <td><strong>${Math.round(bonusScore)} 分</strong></td>
-                        <td>${Math.round(maxBonusScore)} 分</td>
-                        <td>${maxBonusScore > 0 ? ((bonusScore/maxBonusScore)*100).toFixed(1) : 0}%</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-        
-        <div class="report-section">
-            <h3>二、 核定結論</h3>
-            <div style="padding:18px; border:2px solid var(--border-office); border-radius:4px; background-color:var(--bg-grid-panel); font-size:13px; line-height:1.6;">
-                ${vetoTriggered ? `
-                    <div style="color:var(--hud-red); font-weight:800; font-size:14px; margin-bottom:8px;">🚨 否決結論：觸發一票否決條款（不予任用/晉升）</div>
-                    <div><strong>觸發否決條款明細：</strong></div>
-                    <ul style="margin-left: 20px; color:var(--hud-red); font-weight:600;">
-                        ${triggeredVetoes.map(v => `<li>${v}</li>`).join("")}
-                    </ul>
-                ` : recommendedGrade ? `
-                    <div style="color:var(--success-green); font-weight:800; font-size:15px; margin-bottom:10px;">✅ 評核結論：通過門檻，建議聘任/晉升</div>
-                    <table style="width:100%; font-size:13px; border-collapse:collapse;">
-                        <tr>
-                            <td style="padding:5px 0; width:130px; color:#555;"><strong>核定推薦職等:</strong></td>
-                            <td><strong>${recommendedGrade.grade} (${recommendedGrade.title})</strong></td>
-                        </tr>
-                        <tr>
-                            <td style="padding:5px 0; color:#555;"><strong>月薪標準頻寬:</strong></td>
-                            <td><strong style="color:var(--hud-blue); font-size:16px;">NT$ ${recommendedGrade.salary_range}</strong> (基本本薪)</td>
-                        </tr>
-                        <tr>
-                            <td style="padding:5px 0; color:#555;"><strong>阿米巴角色:</strong></td>
-                            <td>${amoebaRole}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding:5px 0; color:#555;"><strong>晉量通過率:</strong></td>
-                            <td>${recommendedGrade.pass_rate}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding:5px 0; color:#555;"><strong>比對門檻:</strong></td>
-                            <td>核心達標分: ≥${recommendedGrade.core_gate}分 ｜ 加分達標分: ≥${recommendedGrade.bonus_gate}分</td>
-                        </tr>
-                    </table>
-                ` : `
-                    <div style="color:var(--hud-red); font-weight:800; font-size:14px;">🚨 評核結論：未達最低職等起薪門檻</div>
-                    <div style="margin-top:6px;">受評者加權得分未達最低門檻。</div>
-                `}
-            </div>
-        </div>
+        if (container.children.length === 0) {
+            container.innerHTML = `<div class="empty-state" style="grid-column: span 2; height:200px;"><i data-lucide="smile"></i><p>本職缺之所有能力指標均以實作評核為主，暫無書面口試問題。</p></div>`;
+            initIcons();
+        }
+    };
 
-        <div class="report-section">
-            <h3>三、 評估細項明細</h3>
-            <table class="report-table">
-                <thead>
-                    <tr>
-                        <th style="width:70px;">代碼</th>
-                        <th>具體能力項目</th>
-                        <th style="width:60px; text-align:center;">評核分</th>
-                        <th style="width:60px; text-align:center;">權重</th>
-                        <th style="width:80px; text-align:center;">加權得分</th>
-                        <th style="width:70px; text-align:center;">類型</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${scoredItems.length > 0 ? scoredItems.map(item => `
-                        <tr>
-                            <td style="font-family:var(--font-mono); font-weight:bold;">${item.code}</td>
-                            <td style="font-weight:600;">${item.name}</td>
-                            <td style="text-align:center; font-weight:bold;">${item.score}</td>
-                            <td style="text-align:center; font-family:var(--font-mono);">${item.weight}</td>
-                            <td style="text-align:center; font-weight:bold; color:var(--hud-blue); font-family:var(--font-mono);">${item.weighted}</td>
-                            <td style="text-align:center;">${item.is_bonus ? '<span style="color:var(--hud-purple); font-weight:600;">加分</span>' : '核心'}</td>
-                        </tr>
-                    `).join("") : '<tr><td colspan="6" style="text-align:center; color:#999;">無任何能力評定大於 0 分。</td></tr>'}
-                </tbody>
-            </table>
-        </div>
+    // Print Report Button
+    const printBtn = document.getElementById("print-btn");
+    if (printBtn) {
+        printBtn.addEventListener("click", () => {
+            window.print();
+        });
+    }
 
-        <div class="report-footer-signature">
-            <div class="sig-box">考評委員代表代表簽章</div>
-            <div class="sig-box">核決主管簽署</div>
-        </div>
-    `;
-    
-    paper.innerHTML = html;
-    modal.classList.add("active");
-    initIcons();
-}
-
-function closeReportModal() {
-    document.getElementById("report-modal").classList.remove("active");
-}
-
-function copyReportText() {
-    const reportText = document.getElementById("report-content-paper").innerText;
-    navigator.clipboard.writeText(reportText).then(() => {
-        alert("評估報告書純文字內容已複製至剪貼簿！");
-    }).catch(err => {
-        console.error("Copy failed", err);
-    });
-}
+    // 6. Start loading the interface
+    renderSidebar();
+    loadActiveJobData();
+});
