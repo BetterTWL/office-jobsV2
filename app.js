@@ -2,20 +2,40 @@
 // DYNAMIC RADAR MAPPING ENGINE & BINDER SECTIONS
 
 document.addEventListener("DOMContentLoaded", () => {
-    // 1. Clock Widget
-    initClock();
+    // 1. Layout Mode (PC/Mobile) - Loaded first to prevent layout flicker or lockouts
+    try {
+        initLayoutMode();
+    } catch (e) {
+        console.error("Layout mode initialization failed:", e);
+    }
+
+    // 2. Clock Widget
+    try {
+        initClock();
+    } catch (e) {
+        console.error("Clock widget initialization failed:", e);
+    }
     
-    // 2. Load Roles
-    initRoles();
+    // 3. Tab Switching - Registered early so tab clicks are bound before roles trigger selections
+    try {
+        initTabs();
+    } catch (e) {
+        console.error("Tab switching initialization failed:", e);
+    }
 
-    // 3. Tab Switching
-    initTabs();
+    // 4. Load Roles
+    try {
+        initRoles();
+    } catch (e) {
+        console.error("Roles initialization failed:", e);
+    }
 
-    // 4. Layout Mode (PC/Mobile)
-    initLayoutMode();
-
-    // Init Lucide
-    initIcons();
+    // Init Lucide Icons
+    try {
+        initIcons();
+    } catch (e) {
+        console.error("Lucide icons initialization failed:", e);
+    }
 });
 
 // GLOBAL STATE
@@ -704,6 +724,10 @@ function recalculateScores() {
 // ==========================================
 
 function initRadarChart() {
+    if (typeof Chart === 'undefined') {
+        console.warn("Chart.js is not loaded. Radar chart will be skipped.");
+        return;
+    }
     const roleData = SALARY_DATA[activeRole];
     if (!roleData.categories || roleData.categories.length === 0) return;
     
@@ -777,7 +801,7 @@ function initRadarChart() {
 }
 
 function updateRadarChart() {
-    if (!radarChart) return;
+    if (typeof Chart === 'undefined' || !radarChart) return;
     const roleData = SALARY_DATA[activeRole];
     if (!roleData.categories) return;
 
@@ -1354,8 +1378,13 @@ function renderInterviewTab() {
 let currentLayout = "auto"; // "auto", "pc", "mobile"
 
 function initLayoutMode() {
-    // Load preference
-    const savedLayout = localStorage.getItem("layout-mode") || "auto";
+    // Load preference defensively (handling restricted environments)
+    let savedLayout = "auto";
+    try {
+        savedLayout = localStorage.getItem("layout-mode") || "auto";
+    } catch (e) {
+        console.warn("localStorage is restricted, defaulting to 'auto':", e);
+    }
     currentLayout = savedLayout;
 
     // Apply layout based on preference & innerWidth
@@ -1372,7 +1401,11 @@ function initLayoutMode() {
             } else {
                 currentLayout = "auto";
             }
-            localStorage.setItem("layout-mode", currentLayout);
+            try {
+                localStorage.setItem("layout-mode", currentLayout);
+            } catch (e) {
+                console.warn("Failed to save layout-mode to localStorage:", e);
+            }
             applyLayoutMode();
         });
     }
@@ -1404,7 +1437,7 @@ function initLayoutMode() {
 function applyLayoutMode() {
     const isMobileViewport = window.innerWidth <= 992;
     const body = document.body;
-    const toggleIcon = document.getElementById("layout-toggle-icon");
+    const toggleIconWrap = document.getElementById("layout-toggle-icon-wrap");
     const toggleText = document.getElementById("layout-toggle-text");
 
     // Clear previous classes
@@ -1423,16 +1456,16 @@ function applyLayoutMode() {
     }
 
     // Update switcher button label & icon
-    if (toggleText && toggleIcon) {
+    if (toggleText && toggleIconWrap) {
         if (currentLayout === "pc") {
             toggleText.textContent = "強制電腦版";
-            toggleIcon.setAttribute("data-lucide", "monitor");
+            toggleIconWrap.innerHTML = '<i data-lucide="monitor" style="width: 14px; height: 14px;"></i>';
         } else if (currentLayout === "mobile") {
             toggleText.textContent = "強制手機版";
-            toggleIcon.setAttribute("data-lucide", "smartphone");
+            toggleIconWrap.innerHTML = '<i data-lucide="smartphone" style="width: 14px; height: 14px;"></i>';
         } else {
             toggleText.textContent = isMobileViewport ? "自動手機版" : "自動電腦版";
-            toggleIcon.setAttribute("data-lucide", isMobileViewport ? "smartphone" : "monitor");
+            toggleIconWrap.innerHTML = `<i data-lucide="${isMobileViewport ? 'smartphone' : 'monitor'}" style="width: 14px; height: 14px;"></i>`;
         }
         initIcons(); // Re-render Lucide icons for the button
     }
