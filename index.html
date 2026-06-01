@@ -14,7 +14,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Lucide Icons CDN for modern office icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=2.7.3">
 </head>
 <body>
     <div class="hud-scanlines"></div>
@@ -82,7 +82,7 @@
                 <div class="header-actions" style="display: flex; align-items: center; gap: 12px;">
                     <!-- Layout Selector (PC/Mobile Toggle) -->
                     <button class="calc-action-btn" id="layout-toggle-btn" title="切換版面配置" style="display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--text-light); cursor: pointer; height: 34px;">
-                        <i data-lucide="smartphone" id="layout-toggle-icon" style="width: 14px; height: 14px;"></i>
+                        <span id="layout-toggle-icon-wrap" style="display: flex; align-items: center;"><i data-lucide="smartphone" style="width: 14px; height: 14px;"></i></span>
                         <span id="layout-toggle-text">手機版</span>
                     </button>
                     <div class="system-time">
@@ -619,7 +619,7 @@
     <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
 
     <!-- SCRIPTS -->
-    <script src="data.js"></script>
-    <script src="app.js"></script>
+    <script src="data.js?v=2.7.3"></script>
+    <script src="app.js?v=2.7.3"></script>
 </body>
 </html>
