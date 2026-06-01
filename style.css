@@ -2140,3 +2140,9 @@ body.layout-mobile .modal-card {
     width: 95%;
     max-height: 90vh;
 }
+
+/* Competency matrix grid table horizontal scroll on mobile */
+body.layout-mobile .grid-table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
